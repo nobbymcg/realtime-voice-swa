@@ -13,12 +13,11 @@ const assistantEntries = new Map();
 let currentUserEntry = null;
 
 // ─── DOM Elements ────────────────────────────────────────────────────────────
-const connectBtn = document.getElementById('connectBtn');
-const disconnectBtn = document.getElementById('disconnectBtn');
+const toggleBtn = document.getElementById('toggleBtn');
 const statusEl = document.getElementById('status');
 const modeLabel = document.getElementById('mode-label');
 const voiceSelect = document.getElementById('voiceSelect');
-const modeSelect = document.getElementById('modeSelect');
+const modeSelect = document.getElementById('modeSelect') || { value: 'vad', addEventListener: () => {} };
 const pttContainer = document.getElementById('ptt-container');
 const pttBtn = document.getElementById('pttBtn');
 const transcriptEl = document.getElementById('transcript');
@@ -231,7 +230,7 @@ function sendSessionUpdate() {
         model: 'whisper-1',
       },
       turn_detection: isVAD
-        ? { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 }
+        ? { type: 'server_vad', threshold: 0.7, prefix_padding_ms: 300, silence_duration_ms: 500 }
         : null,
       instructions: sessionInstructions,
       tools: [
@@ -261,8 +260,14 @@ function handleServerEvent(event) {
   switch (event.type) {
     case 'session.created':
       console.log('Session created:', event.session?.id);
-      setStatus('Initialising...', 'connecting');
-      sendSessionUpdate();
+      startMicrophone().then(() => {
+        initPlayback();
+        sendSessionUpdate();
+      }).catch((err) => {
+        console.error('Microphone error:', err);
+        addTranscriptEntry('assistant', 'Error: Could not access microphone.');
+        cleanup();
+      });
       break;
 
     case 'session.updated':
@@ -346,7 +351,7 @@ function handleServerEvent(event) {
 async function connect() {
   try {
     setStatus('Connecting...', 'connecting');
-    connectBtn.disabled = true;
+    toggleBtn.disabled = true;
 
     try {
       const res = await fetch('/api/instructions');
@@ -355,15 +360,14 @@ async function connect() {
       console.warn('Could not load instructions:', err);
     }
 
-    await startMicrophone();
-    initPlayback();
-
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
     ws.onopen = () => {
       console.log('Connected to relay server');
-      disconnectBtn.disabled = false;
+      toggleBtn.disabled = false;
+      toggleBtn.textContent = 'Disconnect';
+      toggleBtn.classList.add('connected');
       pttBtn.disabled = false;
     };
 
@@ -401,8 +405,9 @@ function cleanup() {
     ws = null;
   }
 
-  connectBtn.disabled = false;
-  disconnectBtn.disabled = true;
+  toggleBtn.disabled = false;
+  toggleBtn.textContent = 'Connect';
+  toggleBtn.classList.remove('connected');
   pttBtn.disabled = true;
   setStatus('Disconnected', 'disconnected');
   assistantEntries.clear();
@@ -427,11 +432,24 @@ function pttStop() {
 }
 
 // ─── Event Listeners ─────────────────────────────────────────────────────────
-connectBtn.addEventListener('click', connect);
-disconnectBtn.addEventListener('click', cleanup);
+document.getElementById('panelTab').addEventListener('click', () => {
+  document.getElementById('sidePanel').classList.toggle('open');
+});
+
+toggleBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    cleanup();
+  } else {
+    connect();
+  }
+});
 modeSelect.addEventListener('change', () => {
   updateModeUI();
   sendSessionUpdate();
+});
+
+document.getElementById('transcriptToggle').addEventListener('click', () => {
+  document.querySelector('.transcript-container').classList.toggle('collapsed');
 });
 
 pttBtn.addEventListener('mousedown', pttStart);
