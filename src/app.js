@@ -422,7 +422,7 @@ async function connect() {
 
     // Connect directly to Azure OpenAI Realtime API
     const host = openaiEndpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const openaiUrl = `wss://${host}/openai/realtime?api-version=${openaiApiVersion}&deployment=${openaiDeployment}`;
+    const openaiUrl = `wss://${host}/openai/v1/realtime?deployment=${openaiDeployment}`;
 
     ws = new WebSocket(openaiUrl, ['realtime', `openai-insecure-api-key.${accessToken}`]);
 
