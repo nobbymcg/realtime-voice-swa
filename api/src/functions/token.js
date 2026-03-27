@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
-import { DefaultAzureCredential } from '@azure/identity';
+import { ManagedIdentityCredential } from '@azure/identity';
 
-const credential = new DefaultAzureCredential();
+const credential = new ManagedIdentityCredential();
 const TOKEN_SCOPE = 'https://cognitiveservices.azure.com/.default';
 
 app.http('token', {
