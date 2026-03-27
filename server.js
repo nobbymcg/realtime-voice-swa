@@ -16,6 +16,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const AZURE_OPENAI_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT;
 const AZURE_OPENAI_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-realtime';
+const AZURE_OPENAI_API_VERSION = process.env.AZURE_OPENAI_API_VERSION || '2025-04-01-preview';
 const PORT = process.env.PORT || 3000;
 
 if (!AZURE_OPENAI_ENDPOINT) {
@@ -112,9 +113,9 @@ wss.on('connection', async (clientWs) => {
     return;
   }
 
-  // Connect to Azure OpenAI Realtime API (GA endpoint format)
+  // Connect to Azure OpenAI Realtime API (preview endpoint format)
   const host = AZURE_OPENAI_ENDPOINT.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const openaiUrl = `wss://${host}/openai/v1/realtime?model=${AZURE_OPENAI_DEPLOYMENT}`;
+  const openaiUrl = `wss://${host}/openai/realtime?api-version=${AZURE_OPENAI_API_VERSION}&deployment=${AZURE_OPENAI_DEPLOYMENT}`;
   console.log('[relay] Connecting to:', openaiUrl);
 
   const openaiWs = new WebSocket(openaiUrl, {
