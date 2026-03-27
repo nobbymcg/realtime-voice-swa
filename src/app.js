@@ -307,12 +307,13 @@ function handleServerEvent(event) {
   switch (event.type) {
     case 'session.created':
       console.log('Session created:', event.session?.id);
-      setStatus('Connected', 'connected');
+      setStatus('Initialising...', 'connecting');
       sendSessionUpdate();
       break;
 
     case 'session.updated':
       console.log('Session configured');
+      setStatus('Connected', 'connected');
       // Prompt the model to greet the caller immediately
       ws.send(JSON.stringify({ type: 'response.create' }));
       break;
