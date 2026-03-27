@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
-import { ManagedIdentityCredential } from '@azure/identity';
+import { DefaultAzureCredential } from '@azure/identity';
 
-const credential = new ManagedIdentityCredential();
+const credential = new DefaultAzureCredential();
 const TOKEN_SCOPE = 'https://cognitiveservices.azure.com/.default';
 
 app.http('token', {
@@ -9,78 +9,22 @@ app.http('token', {
   authLevel: 'anonymous',
   route: 'token',
   handler: async (request, context) => {
-    // Debug: try raw IMDS/identity endpoint to see what SWA provides
-    const identityEndpoint = process.env.IDENTITY_ENDPOINT || '';
-    const identityHeader = process.env.IDENTITY_HEADER || '';
-    const msiEndpoint = process.env.MSI_ENDPOINT || '';
-    const msiSecret = process.env.MSI_SECRET || '';
-
-    // Always return env var diagnostics for now
-    const envDiag = {
-      IDENTITY_ENDPOINT: identityEndpoint || '(empty)',
-      IDENTITY_HEADER: identityHeader ? '(set)' : '(empty)',
-      MSI_ENDPOINT: msiEndpoint || '(empty)',
-      MSI_SECRET: msiSecret ? '(set)' : '(empty)',
-      AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID || '(empty)',
-      allIdentityVars: Object.keys(process.env).filter(k => k.includes('IDENTITY') || k.includes('MSI') || k.includes('MANAGED')).join(', ') || 'none',
-    };
-
-    if (!identityEndpoint && !msiEndpoint) {
-      return {
-        status: 500,
-        jsonBody: {
-          error: 'No identity endpoint available',
-          env: envDiag,
-        },
-      };
-    }
-
     try {
-      // Try the modern endpoint first, fall back to MSI
-      let tokenUrl, headers;
-      if (identityEndpoint && identityHeader) {
-        tokenUrl = `${identityEndpoint}?resource=https://cognitiveservices.azure.com&api-version=2019-08-01`;
-        headers = { 'X-IDENTITY-HEADER': identityHeader };
-      } else if (msiEndpoint && msiSecret) {
-        tokenUrl = `${msiEndpoint}?resource=https://cognitiveservices.azure.com&api-version=2017-09-01`;
-        headers = { 'Secret': msiSecret };
-      }
-
-      const res = await fetch(tokenUrl, { headers });
-      const raw = await res.text();
-
-      let parsed;
-      try { parsed = JSON.parse(raw); } catch { parsed = null; }
-
-      if (parsed && parsed.access_token) {
-        return {
-          jsonBody: {
-            token: parsed.access_token,
-            endpoint: process.env.AZURE_OPENAI_ENDPOINT,
-            deployment: process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-realtime-preview',
-            apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2025-04-01-preview',
-          },
-        };
-      }
+      const tokenResponse = await credential.getToken(TOKEN_SCOPE);
 
       return {
-        status: 500,
         jsonBody: {
-          error: 'Token response unexpected',
-          statusCode: res.status,
-          raw: raw.substring(0, 500),
+          token: tokenResponse.token,
+          endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+          deployment: process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-realtime-preview',
+          apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2025-04-01-preview',
         },
       };
     } catch (err) {
       context.error('Failed to get access token:', err.message);
       return {
         status: 500,
-        jsonBody: {
-          error: 'Failed to authenticate with Azure OpenAI',
-          detail: err.message,
-          name: err.name,
-          env: envDiag,
-        },
+        jsonBody: { error: 'Failed to authenticate with Azure OpenAI' },
       };
     }
   },
