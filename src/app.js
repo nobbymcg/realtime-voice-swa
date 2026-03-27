@@ -420,9 +420,9 @@ async function connect() {
     await startMicrophone();
     initPlayback();
 
-    // Connect directly to Azure OpenAI Realtime API
+    // Connect directly to Azure OpenAI Realtime API (GA endpoint format)
     const host = openaiEndpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const openaiUrl = `wss://${host}/openai/realtime?api-version=${openaiApiVersion}&deployment=${openaiDeployment}`;
+    const openaiUrl = `wss://${host}/openai/v1/realtime?model=${openaiDeployment}`;
 
     console.log('WebSocket URL:', openaiUrl);
     console.log('Token length:', accessToken?.length, 'Token prefix:', accessToken?.substring(0, 20) + '...');
@@ -430,7 +430,7 @@ async function connect() {
     ws = new WebSocket(openaiUrl, ['realtime', `openai-insecure-api-key.${accessToken}`]);
 
     ws.onopen = () => {
-      console.log('Connected directly to Azure OpenAI Realtime API');
+      console.log('Connected to Azure OpenAI Realtime API');
       console.log('WebSocket protocol:', ws.protocol);
       disconnectBtn.disabled = false;
       pttBtn.disabled = false;
@@ -453,16 +453,6 @@ async function connect() {
 
     ws.onerror = (err) => {
       console.error('WebSocket error:', err);
-      // Also try the v1 endpoint format as a probe
-      const v1Url = `https://${host}/openai/v1/realtime?model=${openaiDeployment}`;
-      const oldUrl = openaiUrl.replace('wss://', 'https://');
-      
-      Promise.all([
-        fetch(oldUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } })
-          .then(r => r.text().then(b => console.log(`HTTP probe (old format) status: ${r.status}, body: ${b.substring(0, 300)}`))),
-        fetch(v1Url, { headers: { 'Authorization': `Bearer ${accessToken}` } })
-          .then(r => r.text().then(b => console.log(`HTTP probe (v1 format) status: ${r.status}, body: ${b.substring(0, 300)}`)))
-      ]).catch(e => console.log('HTTP probe failed:', e.message));
       cleanup();
     };
   } catch (err) {
