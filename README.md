@@ -1,6 +1,6 @@
 # Realtime Voice Chat
 
-A browser-based voice assistant powered by the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) on Azure, hosted as an [Azure Static Web App](https://learn.microsoft.com/azure/static-web-apps/) with an Azure Functions backend.
+A browser-based voice assistant powered by the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) on Azure, hosted as an [Azure Static Web App](https://learn.microsoft.com/azure/static-web-apps/) with an [Azure Container App](https://learn.microsoft.com/azure/container-apps/) backend.
 
 ## How It Works
 
@@ -9,41 +9,37 @@ The app lets users have a live voice conversation with an AI assistant directly 
 ### Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│              Azure Static Web App                        │
-│                                                          │
-│  ┌─────────────┐         ┌─────────────────────────┐     │
-│  │  Frontend    │─ /api ─▶│  Azure Functions (Node) │     │
-│  │  (src/)      │         │  (api/)                 │     │
-│  │             │         │                         │     │
-│  │  index.html  │         │  GET  /api/token        │     │
-│  │  app.js      │         │  GET  /api/instructions │     │
-│  │  style.css   │         │  POST /api/search       │     │
-│  └──────┬──────┘         └──────────┬──────────────┘     │
-│         │                           │                    │
-└─────────┼───────────────────────────┼────────────────────┘
-          │                           │
-          │ WebSocket                 │ Managed Identity
-          ▼                           ▼
-   ┌─────────────┐          ┌──────────────────┐
-   │ Azure OpenAI │◀────────│ Azure AD / Entra │
-   │ Realtime API │          └──────────────────┘
-   └─────────────┘
+┌──────────────────────┐         ┌──────────────────────────────┐
+│  Azure Static Web App│         │  Azure Container App         │
+│  (Frontend only)     │         │  (API backend)               │
+│                      │         │                              │
+│  index.html          │─ /api ─▶│  GET  /api/token             │
+│  app.js              │  proxy  │  GET  /api/instructions      │
+│  style.css           │         │  POST /api/search            │
+│                      │         │                              │
+└──────────┬───────────┘         └──────────────┬───────────────┘
+           │                                    │
+           │ WebSocket                          │ Managed Identity
+           ▼                                    ▼
+    ┌─────────────┐                   ┌──────────────────┐
+    │ Azure OpenAI │◀─────────────────│ Azure AD / Entra │
+    │ Realtime API │                   └──────────────────┘
+    └─────────────┘
 ```
 
-### How the Static Web App Uses the Azure Functions
+The Static Web App serves the frontend and proxies `/api/*` requests to a linked Azure Container App backend. This architecture was chosen because SWA's built-in managed Functions do not expose managed identity environment variables to the Functions runtime, making it impossible to use `DefaultAzureCredential` for outbound calls to Azure OpenAI.
 
-Azure Static Web Apps provides a built-in reverse proxy that routes any request to `/api/*` to the Azure Functions backend. The frontend never talks to the Functions directly — it simply calls `/api/token`, `/api/instructions`, or `/api/search` and the SWA infrastructure handles the routing.
+### How the Static Web App Uses the Container App Backend
 
-The three Azure Functions serve distinct roles:
+The SWA has a **linked backend** pointing to the Container App. Any request to `/api/*` is transparently proxied to the Container App, which runs an Express server with three endpoints:
 
-| Function | Route | Purpose |
+| Endpoint | Route | Purpose |
 |---|---|---|
 | **token** | `GET /api/token` | Authenticates with Azure OpenAI using managed identity (`DefaultAzureCredential`), then returns a short-lived access token along with the endpoint, deployment name, and API version. The frontend uses this token to open a WebSocket directly to the Realtime API — **keeping credentials server-side**. |
-| **instructions** | `GET /api/instructions` | Returns the system prompt from `api/instructions.txt`. This tells the assistant how to behave (greeting, tone, tool usage rules). Serving it from the backend keeps the prompt editable without changing frontend code. |
+| **instructions** | `GET /api/instructions` | Returns the system prompt from `instructions.txt`. This tells the assistant how to behave (greeting, tone, tool usage rules). Serving it from the backend keeps the prompt editable without changing frontend code. |
 | **search** | `POST /api/search` | A knowledge base lookup. When the assistant decides it needs to look up information (via the `lookup_info` tool), the frontend calls this endpoint with a search query. The function fetches and caches content from configured URLs, performs keyword matching, and returns relevant text that the assistant uses to ground its response. |
 
-**The key security benefit:** The frontend never handles Azure credentials. The token function uses managed identity to obtain a scoped, short-lived token that only allows the browser to interact with the Realtime API — not to manage Azure resources.
+**The key security benefit:** The frontend never handles Azure credentials. The token endpoint uses managed identity to obtain a scoped, short-lived token that only allows the browser to interact with the Realtime API — not to manage Azure resources.
 
 ### Conversation Flow
 
@@ -66,10 +62,10 @@ The three Azure Functions serve distinct roles:
 
 ## Prerequisites
 
-- An **Azure OpenAI** resource with a Realtime API deployment (e.g., `gpt-4o-realtime-preview`)
-- **Node.js 20** (Azure Functions v4 requires Node 18 or 20)
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-locally) (for local development)
+- An **Azure OpenAI** resource with a Realtime API deployment (e.g., `gpt-realtime`)
+- **Node.js 20**
 - [SWA CLI](https://github.com/Azure/static-web-apps-cli) (for local development)
+- [Docker](https://www.docker.com/) (for building the API container)
 
 ## Local Development
 
@@ -109,19 +105,28 @@ The three Azure Functions serve distinct roles:
 
 ## Deployment
 
-This project deploys automatically via **GitHub Actions**. Every push to `main` triggers a build and deploy to Azure Static Web Apps.
+The frontend deploys automatically via **GitHub Actions** — every push to `main` triggers a build and deploy to Azure Static Web Apps.
+
+The API backend runs as a **Container App** linked to the SWA. To update the API, rebuild and push the container image:
+
+```bash
+cd api
+az containerapp up --name realtime-voice-api --resource-group McGRealtimeVoice --source .
+```
 
 ### Azure Resources
 
 | Resource | Purpose |
 |---|---|
-| **Azure Static Web App** (Standard) | Hosts frontend + Functions API |
+| **Azure Static Web App** (Standard) | Hosts the frontend static files |
+| **Azure Container App** | Hosts the API backend (Express server) |
+| **Azure Container Registry** | Stores the API container image |
 | **Azure OpenAI** | Provides the Realtime API for voice conversations |
-| **Managed Identity** | SWA authenticates to Azure OpenAI without API keys |
+| **Managed Identity** | Container App authenticates to Azure OpenAI without API keys |
 
-### App Settings
+### Environment Variables (Container App)
 
-Configure these in the Azure Portal under **Static Web App → Configuration → Application settings**:
+Configure these on the Container App via the Azure Portal or CLI:
 
 | Setting | Value |
 |---|---|
@@ -131,19 +136,20 @@ Configure these in the Azure Portal under **Static Web App → Configuration →
 ## Project Structure
 
 ```
-├── src/                     # Frontend (static files)
+├── src/                     # Frontend (static files served by SWA)
 │   ├── index.html           # Main page
 │   ├── app.js               # WebSocket, audio, UI logic
 │   ├── audio-processor.js   # AudioWorklet for mic capture
 │   └── style.css            # Styles
-├── api/                     # Azure Functions backend
-│   ├── src/functions/
-│   │   ├── token.js         # Auth token endpoint
-│   │   ├── instructions.js  # System prompt endpoint
-│   │   └── search.js        # Knowledge base search
+├── api/                     # API backend (Container App)
+│   ├── server.js            # Express server (token, instructions, search)
+│   ├── Dockerfile           # Container build definition
 │   ├── instructions.txt     # System prompt for the assistant
-│   ├── host.json            # Functions host config
-│   └── package.json         # API dependencies
-├── staticwebapp.config.json # SWA routing and platform config
+│   ├── package.json         # API dependencies
+│   └── src/functions/       # Azure Functions code (local dev with SWA CLI)
+│       ├── token.js         # Auth token endpoint
+│       ├── instructions.js  # System prompt endpoint
+│       └── search.js        # Knowledge base search
+├── staticwebapp.config.json # SWA routing config
 └── swa-cli.config.json      # Local dev emulator config
 ```

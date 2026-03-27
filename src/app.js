@@ -422,7 +422,7 @@ async function connect() {
 
     // Connect directly to Azure OpenAI Realtime API
     const host = openaiEndpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const openaiUrl = `wss://${host}/openai/v1/realtime?model=${openaiDeployment}`;
+    const openaiUrl = `wss://${host}/openai/realtime?api-version=${openaiApiVersion}&deployment=${openaiDeployment}`;
 
     console.log('WebSocket URL:', openaiUrl);
     console.log('Token length:', accessToken?.length, 'Token prefix:', accessToken?.substring(0, 20) + '...');
@@ -453,15 +453,16 @@ async function connect() {
 
     ws.onerror = (err) => {
       console.error('WebSocket error:', err);
-      // Try an HTTP request to the same URL to get a more descriptive error
-      fetch(openaiUrl.replace('wss://', 'https://'), {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      }).then(r => {
-        console.log('HTTP probe status:', r.status, r.statusText);
-        return r.text();
-      }).then(body => {
-        console.log('HTTP probe body:', body.substring(0, 500));
-      }).catch(e => console.log('HTTP probe failed:', e.message));
+      // Also try the v1 endpoint format as a probe
+      const v1Url = `https://${host}/openai/v1/realtime?model=${openaiDeployment}`;
+      const oldUrl = openaiUrl.replace('wss://', 'https://');
+      
+      Promise.all([
+        fetch(oldUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } })
+          .then(r => r.text().then(b => console.log(`HTTP probe (old format) status: ${r.status}, body: ${b.substring(0, 300)}`))),
+        fetch(v1Url, { headers: { 'Authorization': `Bearer ${accessToken}` } })
+          .then(r => r.text().then(b => console.log(`HTTP probe (v1 format) status: ${r.status}, body: ${b.substring(0, 300)}`)))
+      ]).catch(e => console.log('HTTP probe failed:', e.message));
       cleanup();
     };
   } catch (err) {
