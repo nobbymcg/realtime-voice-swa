@@ -8,11 +8,6 @@ let nextPlaybackTime = 0;
 let currentResponseId = null;
 let sessionInstructions = '';
 
-// Connection config (populated from /api/token)
-let openaiEndpoint = '';
-let openaiDeployment = '';
-let openaiApiVersion = '';
-
 // Transcript tracking: maps response_id → DOM element (for streaming text)
 const assistantEntries = new Map();
 let currentUserEntry = null;
@@ -122,7 +117,6 @@ function stopPlayback() {
 }
 
 function interruptPlayback() {
-  // Reset playback so any queued audio is abandoned
   stopPlayback();
   initPlayback();
 }
@@ -171,7 +165,6 @@ function stopVisualizer() {
 
 // ─── Microphone Capture ──────────────────────────────────────────────────────
 async function startMicrophone() {
-  // Use 24kHz to match OpenAI's expected sample rate
   audioContext = new AudioContext({ sampleRate: 24000 });
   await audioContext.audioWorklet.addModule('audio-processor.js');
 
@@ -200,9 +193,8 @@ async function startMicrophone() {
   };
 
   source.connect(workletNode);
-  workletNode.connect(audioContext.destination); // needed for worklet to process
+  workletNode.connect(audioContext.destination);
 
-  // Start visualizer from the raw mic stream
   startVisualizer(micStream);
 }
 
@@ -265,44 +257,6 @@ function sendSessionUpdate() {
   ws.send(JSON.stringify(sessionConfig));
 }
 
-// ─── Tool Execution (client-side, calls Azure Function) ─────────────────────
-async function executeToolCall(callId, name, args) {
-  let output = 'No information found.';
-  try {
-    if (name === 'lookup_info') {
-      const parsed = JSON.parse(args);
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: parsed.query }),
-      });
-      if (res.ok) {
-        output = await res.text();
-      } else {
-        output = `Error searching knowledge base: ${res.statusText}`;
-      }
-    }
-  } catch (err) {
-    console.error('Tool execution error:', err);
-    output = `Error looking up information: ${err.message}`;
-  }
-
-  // Send the function output directly to Azure OpenAI
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: callId,
-        output: output,
-      },
-    }));
-
-    // Tell the model to continue generating a response
-    ws.send(JSON.stringify({ type: 'response.create' }));
-  }
-}
-
 function handleServerEvent(event) {
   switch (event.type) {
     case 'session.created':
@@ -314,7 +268,6 @@ function handleServerEvent(event) {
     case 'session.updated':
       console.log('Session configured');
       setStatus('Connected', 'connected');
-      // Prompt the model to greet the caller immediately
       ws.send(JSON.stringify({ type: 'response.create' }));
       break;
 
@@ -323,7 +276,6 @@ function handleServerEvent(event) {
       break;
 
     case 'response.audio_transcript.delta': {
-      // Stream assistant transcript
       const rid = event.response_id;
       let entry = assistantEntries.get(rid);
       if (!entry) {
@@ -336,14 +288,12 @@ function handleServerEvent(event) {
     }
 
     case 'response.audio_transcript.done': {
-      // Finalize the assistant entry
       const rid = event.response_id;
       assistantEntries.delete(rid);
       break;
     }
 
     case 'conversation.item.input_audio_transcription.completed': {
-      // User's speech transcript
       if (event.transcript) {
         addTranscriptEntry('user', event.transcript.trim());
       }
@@ -352,7 +302,6 @@ function handleServerEvent(event) {
 
     case 'input_audio_buffer.speech_started':
       setStatus('Listening...', 'speaking');
-      // Interrupt any ongoing playback if the user starts speaking
       interruptPlayback();
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'response.cancel' }));
@@ -368,10 +317,14 @@ function handleServerEvent(event) {
       break;
 
     case 'response.function_call_arguments.done': {
-      // Model wants to call a tool — execute via Azure Function and return result
       console.log(`Function call: ${event.name}(${event.arguments})`);
       setStatus('Looking up info...', 'connecting');
-      executeToolCall(event.call_id, event.name, event.arguments);
+      ws.send(JSON.stringify({
+        type: 'tool_execute',
+        call_id: event.call_id,
+        name: event.name,
+        arguments: event.arguments,
+      }));
       break;
     }
 
@@ -386,8 +339,6 @@ function handleServerEvent(event) {
       break;
 
     default:
-      // Uncomment to debug:
-      // console.log('Unhandled event:', event.type);
       break;
   }
 }
@@ -397,18 +348,6 @@ async function connect() {
     setStatus('Connecting...', 'connecting');
     connectBtn.disabled = true;
 
-    // Fetch access token and connection config from Azure Function
-    const tokenRes = await fetch('/api/token');
-    if (!tokenRes.ok) {
-      throw new Error('Failed to get access token from server');
-    }
-    const tokenData = await tokenRes.json();
-    const accessToken = tokenData.token;
-    openaiEndpoint = tokenData.endpoint;
-    openaiDeployment = tokenData.deployment;
-    openaiApiVersion = tokenData.apiVersion;
-
-    // Fetch instructions from Azure Function
     try {
       const res = await fetch('/api/instructions');
       if (res.ok) sessionInstructions = await res.text();
@@ -416,22 +355,14 @@ async function connect() {
       console.warn('Could not load instructions:', err);
     }
 
-    // Start mic first so we can fail fast if permission denied
     await startMicrophone();
     initPlayback();
 
-    // Connect directly to Azure OpenAI Realtime API (GA endpoint format)
-    const host = openaiEndpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const openaiUrl = `wss://${host}/openai/v1/realtime?model=${openaiDeployment}`;
-
-    console.log('WebSocket URL:', openaiUrl);
-    console.log('Token length:', accessToken?.length, 'Token prefix:', accessToken?.substring(0, 20) + '...');
-
-    ws = new WebSocket(openaiUrl, ['realtime', `openai-insecure-api-key.${accessToken}`]);
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
     ws.onopen = () => {
-      console.log('Connected to Azure OpenAI Realtime API');
-      console.log('WebSocket protocol:', ws.protocol);
+      console.log('Connected to relay server');
       disconnectBtn.disabled = false;
       pttBtn.disabled = false;
     };
@@ -445,9 +376,8 @@ async function connect() {
       }
     };
 
-    ws.onclose = (event) => {
-      console.log('Disconnected from Azure OpenAI');
-      console.log('WebSocket close code:', event.code, 'reason:', event.reason || '(none)', 'wasClean:', event.wasClean);
+    ws.onclose = () => {
+      console.log('Disconnected from relay');
       cleanup();
     };
 
@@ -490,7 +420,6 @@ function pttStop() {
   pttBtn.classList.remove('active');
   pttBtn.textContent = 'Hold to Talk';
 
-  // Commit the audio buffer to signal end of speech
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
     ws.send(JSON.stringify({ type: 'response.create' }));
@@ -505,14 +434,12 @@ modeSelect.addEventListener('change', () => {
   sendSessionUpdate();
 });
 
-// PTT mouse events
 pttBtn.addEventListener('mousedown', pttStart);
 pttBtn.addEventListener('mouseup', pttStop);
 pttBtn.addEventListener('mouseleave', () => {
   if (pttBtn.classList.contains('active')) pttStop();
 });
 
-// PTT touch events (mobile)
 pttBtn.addEventListener('touchstart', (e) => {
   e.preventDefault();
   pttStart();
@@ -522,7 +449,6 @@ pttBtn.addEventListener('touchend', (e) => {
   pttStop();
 });
 
-// PTT keyboard (spacebar)
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && modeSelect.value === 'ptt' && !pttBtn.disabled && !e.repeat) {
     e.preventDefault();
@@ -536,5 +462,4 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
-// Initialize UI
 updateModeUI();
