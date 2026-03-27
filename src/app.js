@@ -424,10 +424,14 @@ async function connect() {
     const host = openaiEndpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const openaiUrl = `wss://${host}/openai/v1/realtime?model=${openaiDeployment}`;
 
+    console.log('WebSocket URL:', openaiUrl);
+    console.log('Token length:', accessToken?.length, 'Token prefix:', accessToken?.substring(0, 20) + '...');
+
     ws = new WebSocket(openaiUrl, ['realtime', `openai-insecure-api-key.${accessToken}`]);
 
     ws.onopen = () => {
       console.log('Connected directly to Azure OpenAI Realtime API');
+      console.log('WebSocket protocol:', ws.protocol);
       disconnectBtn.disabled = false;
       pttBtn.disabled = false;
     };
@@ -441,13 +445,23 @@ async function connect() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       console.log('Disconnected from Azure OpenAI');
+      console.log('WebSocket close code:', event.code, 'reason:', event.reason || '(none)', 'wasClean:', event.wasClean);
       cleanup();
     };
 
     ws.onerror = (err) => {
       console.error('WebSocket error:', err);
+      // Try an HTTP request to the same URL to get a more descriptive error
+      fetch(openaiUrl.replace('wss://', 'https://'), {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      }).then(r => {
+        console.log('HTTP probe status:', r.status, r.statusText);
+        return r.text();
+      }).then(body => {
+        console.log('HTTP probe body:', body.substring(0, 500));
+      }).catch(e => console.log('HTTP probe failed:', e.message));
       cleanup();
     };
   } catch (err) {
