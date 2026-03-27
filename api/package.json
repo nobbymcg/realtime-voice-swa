@@ -1,0 +1,16 @@
+{
+  "name": "realtime-voice-swa-api",
+  "version": "1.0.0",
+  "description": "Azure Functions API backend for Realtime Voice SWA",
+  "type": "module",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.13.1",
+    "jsdom": "^29.0.1"
+  }
+}

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Realtime Voice Chat</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Realtime Voice Chat</h1>
+    <p class="subtitle">Powered by OpenAI Realtime API</p>
+
+    <div class="controls">
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+
+    <div class="status-bar">
+      <span id="status" class="status disconnected">Disconnected</span>
+      <span id="mode-label" class="mode-label"></span>
+    </div>
+
+    <div class="settings">
+      <label>
+        Voice:
+        <select id="voiceSelect">
+          <option value="alloy">Alloy</option>
+          <option value="ash">Ash</option>
+          <option value="ballad">Ballad</option>
+          <option value="coral">Coral</option>
+          <option value="echo">Echo</option>
+          <option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="verse">Verse</option>
+        </select>
+      </label>
+      <label>
+        Mode:
+        <select id="modeSelect">
+          <option value="vad">Voice Activity Detection (hands-free)</option>
+          <option value="ptt">Push to Talk</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="ptt-container" class="ptt-container hidden">
+      <button id="pttBtn" class="ptt-btn" disabled>Hold to Talk</button>
+    </div>
+
+    <div class="visualizer-container">
+      <canvas id="visualizer" width="400" height="80"></canvas>
+    </div>
+
+    <div class="transcript-container">
+      <h2>Conversation</h2>
+      <div id="transcript" class="transcript"></div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

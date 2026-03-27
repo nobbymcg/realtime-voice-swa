@@ -1,0 +1,12 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "realtime-voice-swa": {
+      "appLocation": "src",
+      "apiLocation": "api",
+      "outputLocation": "src",
+      "apiLanguage": "node",
+      "apiVersion": "20"
+    }
+  }
+}

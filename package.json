@@ -1,0 +1,13 @@
+{
+  "name": "realtime-voice-swa",
+  "version": "1.0.0",
+  "description": "Realtime Voice Chat — Azure Static Web App with Functions API",
+  "private": true,
+  "scripts": {
+    "install:api": "cd api && npm install",
+    "start:swa": "swa start src --api-location api"
+  },
+  "devDependencies": {
+    "@azure/static-web-apps-cli": "^2.0.0"
+  }
+}
