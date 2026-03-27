@@ -22,9 +22,13 @@ app.http('token', {
           error: 'No identity endpoint available',
           env: {
             IDENTITY_ENDPOINT: identityEndpoint || null,
-            MSI_ENDPOINT: msiEndpoint || null,
             IDENTITY_HEADER: identityHeader ? '(set)' : null,
+            MSI_ENDPOINT: msiEndpoint || null,
             MSI_SECRET: msiSecret ? '(set)' : null,
+            AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID || null,
+            WEBSITE_INSTANCE_ID: process.env.WEBSITE_INSTANCE_ID || null,
+            CONTAINER_NAME: process.env.CONTAINER_NAME || null,
+            allIdentityVars: Object.keys(process.env).filter(k => k.includes('IDENTITY') || k.includes('MSI') || k.includes('MANAGED')).join(', ') || 'none',
           },
         },
       };
