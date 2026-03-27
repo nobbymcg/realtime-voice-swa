@@ -10,26 +10,27 @@ app.http('token', {
   route: 'token',
   handler: async (request, context) => {
     // Debug: try raw IMDS/identity endpoint to see what SWA provides
-    const identityEndpoint = process.env.IDENTITY_ENDPOINT;
-    const identityHeader = process.env.IDENTITY_HEADER;
-    const msiEndpoint = process.env.MSI_ENDPOINT;
-    const msiSecret = process.env.MSI_SECRET;
+    const identityEndpoint = process.env.IDENTITY_ENDPOINT || '';
+    const identityHeader = process.env.IDENTITY_HEADER || '';
+    const msiEndpoint = process.env.MSI_ENDPOINT || '';
+    const msiSecret = process.env.MSI_SECRET || '';
+
+    // Always return env var diagnostics for now
+    const envDiag = {
+      IDENTITY_ENDPOINT: identityEndpoint || '(empty)',
+      IDENTITY_HEADER: identityHeader ? '(set)' : '(empty)',
+      MSI_ENDPOINT: msiEndpoint || '(empty)',
+      MSI_SECRET: msiSecret ? '(set)' : '(empty)',
+      AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID || '(empty)',
+      allIdentityVars: Object.keys(process.env).filter(k => k.includes('IDENTITY') || k.includes('MSI') || k.includes('MANAGED')).join(', ') || 'none',
+    };
 
     if (!identityEndpoint && !msiEndpoint) {
       return {
         status: 500,
         jsonBody: {
           error: 'No identity endpoint available',
-          env: {
-            IDENTITY_ENDPOINT: identityEndpoint || null,
-            IDENTITY_HEADER: identityHeader ? '(set)' : null,
-            MSI_ENDPOINT: msiEndpoint || null,
-            MSI_SECRET: msiSecret ? '(set)' : null,
-            AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID || null,
-            WEBSITE_INSTANCE_ID: process.env.WEBSITE_INSTANCE_ID || null,
-            CONTAINER_NAME: process.env.CONTAINER_NAME || null,
-            allIdentityVars: Object.keys(process.env).filter(k => k.includes('IDENTITY') || k.includes('MSI') || k.includes('MANAGED')).join(', ') || 'none',
-          },
+          env: envDiag,
         },
       };
     }
@@ -78,6 +79,7 @@ app.http('token', {
           error: 'Failed to authenticate with Azure OpenAI',
           detail: err.message,
           name: err.name,
+          env: envDiag,
         },
       };
     }
