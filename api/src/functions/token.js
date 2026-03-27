@@ -24,7 +24,11 @@ app.http('token', {
       context.error('Failed to get access token:', err.message);
       return {
         status: 500,
-        jsonBody: { error: 'Failed to authenticate with Azure OpenAI' },
+        jsonBody: {
+          error: 'Failed to authenticate with Azure OpenAI',
+          detail: err.message,
+          name: err.name,
+        },
       };
     }
   },
