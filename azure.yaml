@@ -1,0 +1,10 @@
+name: realtime-voice-app
+metadata:
+  template: realtime-voice-app
+services:
+  web:
+    project: .
+    host: containerapp
+    language: js
+    docker:
+      path: Dockerfile

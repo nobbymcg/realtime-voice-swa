@@ -83,8 +83,13 @@ function int16ToFloat32(int16Array) {
 }
 
 // ─── Playback ────────────────────────────────────────────────────────────────
+let playbackAnalyser = null;
+
 function initPlayback() {
   playbackCtx = new AudioContext({ sampleRate: 24000 });
+  playbackAnalyser = playbackCtx.createAnalyser();
+  playbackAnalyser.fftSize = 256;
+  playbackAnalyser.connect(playbackCtx.destination);
   nextPlaybackTime = 0;
 }
 
@@ -99,7 +104,7 @@ function enqueueAudio(base64Audio) {
 
   const source = playbackCtx.createBufferSource();
   source.buffer = buffer;
-  source.connect(playbackCtx.destination);
+  source.connect(playbackAnalyser);
 
   const now = playbackCtx.currentTime;
   const startTime = Math.max(now, nextPlaybackTime);
@@ -132,11 +137,17 @@ function startVisualizer(stream) {
   source.connect(analyser);
 
   const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
+  const micData = new Uint8Array(bufferLength);
+  const playbackData = new Uint8Array(bufferLength);
 
   function draw() {
     animFrameId = requestAnimationFrame(draw);
-    analyser.getByteFrequencyData(dataArray);
+    analyser.getByteFrequencyData(micData);
+    if (playbackAnalyser) {
+      playbackAnalyser.getByteFrequencyData(playbackData);
+    } else {
+      playbackData.fill(0);
+    }
 
     canvasCtx.fillStyle = '#1a1a1a';
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -144,9 +155,16 @@ function startVisualizer(stream) {
     const barWidth = (canvas.width / bufferLength) * 2;
     let x = 0;
     for (let i = 0; i < bufferLength; i++) {
-      const barHeight = (dataArray[i] / 255) * canvas.height;
-      canvasCtx.fillStyle = `hsl(160, 60%, ${30 + (dataArray[i] / 255) * 40}%)`;
-      canvasCtx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+      // Playback bars (blue) drawn first
+      const pbHeight = (playbackData[i] / 255) * canvas.height;
+      canvasCtx.fillStyle = `hsl(220, 70%, ${30 + (playbackData[i] / 255) * 40}%)`;
+      canvasCtx.fillRect(x, canvas.height - pbHeight, barWidth - 1, pbHeight);
+
+      // Mic bars (green) drawn on top
+      const micHeight = (micData[i] / 255) * canvas.height;
+      canvasCtx.fillStyle = `hsl(160, 60%, ${30 + (micData[i] / 255) * 40}%)`;
+      canvasCtx.fillRect(x, canvas.height - micHeight, barWidth - 1, micHeight);
+
       x += barWidth;
     }
   }
@@ -243,7 +261,7 @@ function sendSessionUpdate() {
             properties: {
               query: {
                 type: 'string',
-                description: 'The search query describing what information to look up',
+                description: 'Retrieve information on the products, packages, and services provided by STC, as well as company policies and general inquiries. This should be used to answer user questions that can be addressed by referencing the knowledge base, such as "What are the features of the premium package?" or "Tell me about pre-paid plans"',
               },
             },
             required: ['query'],

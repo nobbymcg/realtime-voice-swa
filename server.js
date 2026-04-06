@@ -44,7 +44,11 @@ app.get('/api/instructions', (req, res) => {
 
 // ─── Knowledge Base ────────────────────────────────────────────────────────
 const KNOWLEDGE_URLS = [
-  'https://www.stc.com.sa/en/personal/home.html',
+  'https://www.stc.com.sa/',
+  'https://www.stc.com.sa/en/personal/mobile/packages/',
+  'https://www.stc.com.sa/en/personal/homepackages/',
+  'https://www.stc.com.sa/en/personal/homepackages/baity-bundles.html'
+
 ];
 
 const knowledgeCache = new Map();
